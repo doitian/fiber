@@ -19,6 +19,7 @@ use ckb_jsonrpc_types::Script;
 #[cfg(not(target_arch = "wasm32"))]
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{error::CALL_EXECUTION_FAILED_CODE, ErrorObjectOwned};
+use ractor::{call, ActorRef};
 use rand::Rng;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 use serde::{Deserialize, Serialize};
@@ -242,6 +243,13 @@ trait InvoiceRpc {
         &self,
         payment_hash: InvoiceParams,
     ) -> Result<GetInvoiceResult, ErrorObjectOwned>;
+
+    /// Settles an invoice with a payment preimage.
+    #[method(name = "settle_invoice")]
+    async fn settle_invoice(
+        &self,
+        settle_invoice: SettleInvoiceParams,
+    ) -> Result<SettleInvoiceResult, ErrorObjectOwned>;
 }
 
 pub struct InvoiceRpcServerImpl<S> {
