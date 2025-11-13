@@ -39,10 +39,9 @@ fn test_payment_hash(value: u8) -> Hash256 {
 async fn create_test_actor() -> (ActorRef<LndTrackerMessage>, tokio::task::JoinHandle<()>) {
     // Use spawn instead of spawn_linked to avoid needing a root actor
     let args = create_test_args();
-    let (actor_ref, actor_handle) =
-        Actor::spawn(Some("test_lnd_tracker".to_string()), LndTrackerActor, args)
-            .await
-            .expect("Failed to spawn test actor");
+    let (actor_ref, actor_handle) = Actor::spawn(None, LndTrackerActor, args)
+        .await
+        .expect("Failed to spawn test actor");
 
     (actor_ref, actor_handle)
 }
