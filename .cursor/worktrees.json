@@ -1,0 +1,7 @@
+{
+  "setup-worktree": [
+    "cp $ROOT_WORKTREE_PATH/mise.toml mise.toml",
+    "mise trust -y",
+    "mkdir -p .vscode && cp -f $ROOT_WORKTREE_PATH/.vscode/settings.json .vscode/settings.json"
+  ]
+}

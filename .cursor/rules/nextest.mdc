@@ -1,0 +1,13 @@
+---
+alwaysApply: true
+---
+# Run tests using `cargo nextest`
+
+Always execute the Rust test suite with `cargo nextest` instead of the default `cargo test`.
+
+## How to run
+
+- `cargo nextest run --all-targets --all-features` for a full local verification run.
+- Use the `Makefile` target `make test` when you want the exact flags used in automation (`RUST_LOG=off cargo nextest run --no-fail-fast -p fnn -p fiber-bin`).
+
+Running tests this way avoids discrepancies with CI and ensures flaky tests are surfaced quickly.
