@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-- The base branch is develop.
-- The cargo package name of `crates/fiber-lib` is `fnn`.
