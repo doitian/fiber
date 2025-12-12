@@ -1,0 +1,60 @@
+[env]
+_.path = ["~/apps/bitcoin-27.0/bin", "~/apps/lina"]
+CXXFLAGS = "--include cstdint"
+
+[vars]
+cargo_test_args = ""
+
+[tasks.test]
+usage = '''
+arg "[filters]" var=#true
+'''
+run = "cargo nextest run --no-fail-fast ${usage_filters}"
+
+[tasks."wasm:test"]
+run = "pnpm exec node index.js"
+dir = "{{cwd}}/.github/wasm-test-runner"
+env = { WORKING_DIR = "{{cwd}}" }
+
+[tasks.pre-commit]
+depends = ["pre-commit:*"]
+
+[tasks."pre-commit:typos"]
+run = "typos"
+
+[tasks."pre-commit:cargo-fmt"]
+run = "cargo fmt --check"
+
+[tasks."e2e:killall"]
+run = [
+  "killall fnn || true",
+  "killall ckb || true",
+  "killall bitcoind || true",
+  "killall lnd || true"
+]
+
+[tasks."e2e:setup"]
+usage = '''
+arg "<case>" help="test case name"
+complete "case" run="cd tests/bruno && fd -t d --min-depth=2 --path-separator=/ --format={}"
+flag "--clean" help="clean up all old state"
+'''
+run = '''
+if [ "${usage_clean:-}" = "true" ]; then
+  export REMOVE_OLD_STATE=y
+fi
+./tests/nodes/start.sh "${usage_case}"
+'''
+
+[tasks.e2e]
+dir = "{{ config_root }}/tests/bruno"
+usage = '''
+arg "<case>" help="test case name"
+complete "case" run="cd tests/bruno && fd -t d --min-depth=2 --path-separator=/ --format={}"
+'''
+run = 'bru run "${usage_case}" -r --env test'
+
+[tools]
+"cargo:wasm-pack" = "latest"
+"npm:@usebruno/cli" = "latest"
+"ubi:lightningnetwork/lnd" = { version = "latest", extract_all = "true" }
