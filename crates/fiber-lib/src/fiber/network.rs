@@ -97,6 +97,7 @@ use crate::fiber::serde_utils::EntityHex;
 use crate::fiber::types::{
     FiberChannelMessage, PeeledPaymentOnionPacket, TlcErrPacket, TxAbort, TxSignatures,
 };
+use crate::fiber::SettleTlcSetCommand;
 use crate::invoice::{
     CkbInvoice, CkbInvoiceStatus, InvoiceError, InvoiceStore, PreimageStore, SettleInvoiceError,
 };
@@ -282,8 +283,10 @@ pub enum NetworkActorCommand {
     CheckChannels,
     // Timeout a hold tlc
     TimeoutHoldTlc(Hash256, Hash256, u64),
-    // Settle tlc set, including MPP and normal tlc set
-    SettleTlcSet(Hash256, Option<(Hash256, u64)>),
+    // Settle tlc set by given a list of `(channel_id, tlc_id)`
+    SettleTlcSet(Hash256, Vec<(Hash256, u64)>),
+    // Settle hold tlc set saved for a payment hash
+    SettleHoldTlcSet(Hash256),
     // Check peer send us Init message in an expected time, otherwise disconnect with the peer.
     CheckPeerInit(PeerId, SessionId),
     // For internal use and debugging only. Most of the messages requires some
@@ -1525,113 +1528,19 @@ where
                     }
                 }
             }
-            NetworkActorCommand::SettleTlcSet(payment_hash, tlc_info) => {
-                let tlc_ids = if let Some((channel_id, tlc_id)) = tlc_info {
-                    vec![(channel_id, tlc_id)]
-                } else {
-                    self.store
-                        .get_payment_hold_tlcs(payment_hash)
-                        .iter()
-                        .map(|hold_tlc| (hold_tlc.channel_id, hold_tlc.tlc_id))
-                        .collect()
-                };
-                let tlcs: Vec<_> = tlc_ids
-                    .into_iter()
-                    .filter_map(|(channel_id, tlc_id)| {
-                        let state = self.store.get_channel_actor_state(&channel_id)?;
-                        let tlc_id = TLCId::Received(tlc_id);
-                        state
-                            .get_received_tlc(tlc_id)
-                            .map(|tlc| (channel_id, tlc.clone()))
-                    })
+            NetworkActorCommand::SettleHoldTlcSet(payment_hash) => {
+                let channel_tlc_ids = self
+                    .store
+                    .get_payment_hold_tlcs(payment_hash)
+                    .iter()
+                    .map(|hold_tlc| (hold_tlc.channel_id, hold_tlc.tlc_id))
                     .collect();
-
-                let not_mpp = tlc_info.is_some();
-                let mut tlc_fail = None;
-
-                // check if all tlcs have the same total amount
-                if tlcs.len() > 1
-                    && !tlcs
-                        .windows(2)
-                        .all(|w| w[0].1.total_amount == w[1].1.total_amount)
-                {
-                    error!("TLCs have inconsistent total_amount: {:?}", tlcs);
-                    tlc_fail = Some(TlcErr::new(TlcErrorCode::IncorrectOrUnknownPaymentDetails));
-                }
-                let Some(invoice) = self.store.get_invoice(&payment_hash) else {
-                    error!(
-                        "Try to settle mpp tlc set, but invoice not found for payment hash {:?}",
-                        payment_hash
-                    );
-                    return Ok(());
-                };
-
-                let fulfilled = is_invoice_fulfilled(&invoice, tlcs.iter().map(|(_, tlc)| tlc));
-                if not_mpp {
-                    if self.store.get_invoice_status(&payment_hash) != Some(CkbInvoiceStatus::Open)
-                        || !fulfilled
-                    {
-                        tlc_fail =
-                            Some(TlcErr::new(TlcErrorCode::IncorrectOrUnknownPaymentDetails));
-                    }
-                } else if !fulfilled {
-                    return Ok(());
-                }
-
-                // if we have enough tlcs to fulfill the invoice, update invoice status to Received
-                // for hold invoice we may don't have preimages yet, so just update status here
-                self.store
-                    .update_invoice_status(&payment_hash, CkbInvoiceStatus::Received)
-                    .expect("update invoice status failed");
-
-                let Some(preimage) = self.store.get_preimage(&payment_hash) else {
-                    return Ok(());
-                };
-
-                // remove tlcs
-                for (channel_id, tlc) in tlcs {
-                    let (send, _recv) = oneshot::channel();
-                    let rpc_reply = RpcReplyPort::from(send);
-                    let remove_reason = match tlc_fail.clone() {
-                        Some(tlc_fail) => RemoveTlcReason::RemoveTlcFail(TlcErrPacket::new(
-                            tlc_fail,
-                            &tlc.shared_secret,
-                        )),
-                        None => RemoveTlcReason::RemoveTlcFulfill(RemoveTlcFulfill {
-                            payment_preimage: preimage,
-                        }),
-                    };
-
-                    match state
-                        .send_command_to_channel(
-                            channel_id,
-                            ChannelCommand::RemoveTlc(
-                                RemoveTlcCommand {
-                                    id: tlc.id(),
-                                    reason: remove_reason,
-                                },
-                                rpc_reply,
-                            ),
-                        )
-                        .await
-                    {
-                        Ok(_) => {
-                            self.store.remove_payment_hold_tlc(
-                                &payment_hash,
-                                &channel_id,
-                                tlc.id(),
-                            );
-                        }
-                        Err(err) => {
-                            error!(
-                                "Failed to remove tlc {:?} for channel {:?}: {}",
-                                tlc.id(),
-                                channel_id,
-                                err
-                            );
-                        }
-                    }
-                }
+                self.settle_tlc_set(state, payment_hash, channel_tlc_ids, true)
+                    .await;
+            }
+            NetworkActorCommand::SettleTlcSet(payment_hash, channel_tlc_ids) => {
+                self.settle_tlc_set(state, payment_hash, channel_tlc_ids, false)
+                    .await;
             }
             NetworkActorCommand::TimeoutHoldTlc(payment_hash, channel_id, tlc_id) => {
                 debug!(
@@ -2116,6 +2025,48 @@ where
         Ok(())
     }
 
+    async fn settle_tlc_set(
+        &self,
+        state: &mut NetworkActorState<S, C>,
+        payment_hash: Hash256,
+        channel_tlc_ids: Vec<(Hash256, u64)>,
+        is_hold_tlc_set: bool,
+    ) {
+        let settle_command = SettleTlcSetCommand::new(payment_hash, channel_tlc_ids, &self.store);
+        for tlc_settlement in settle_command.run() {
+            let (send, _recv) = oneshot::channel();
+            let rpc_reply = RpcReplyPort::from(send);
+            match state
+                .send_command_to_channel(
+                    tlc_settlement.channel_id(),
+                    ChannelCommand::RemoveTlc(
+                        tlc_settlement.remove_tlc_command().clone(),
+                        rpc_reply,
+                    ),
+                )
+                .await
+            {
+                Ok(_) => {
+                    if is_hold_tlc_set {
+                        self.store.remove_payment_hold_tlc(
+                            &payment_hash,
+                            &tlc_settlement.channel_id(),
+                            tlc_settlement.tlc_id(),
+                        );
+                    }
+                }
+                Err(err) => {
+                    error!(
+                        "Failed to remove tlc {:?} for channel {:?}: {}",
+                        tlc_settlement.tlc_id(),
+                        tlc_settlement.channel_id(),
+                        err
+                    );
+                }
+            }
+        }
+    }
+
     /// Async version of check_channel_shutdown that runs in spawned task.
     /// Checks if the channel funding cell has been spent (indicating remote force close).
     async fn check_channel_shutdown(
@@ -2329,13 +2280,9 @@ where
         }
 
         self.store.insert_preimage(payment_hash, payment_preimage);
-        let _ = myself.send_message(NetworkActorMessage::new_notification(
-            NetworkServiceEvent::PreimageCreated(payment_hash, payment_preimage),
-        ));
-
         // We will send network actor a message to settle the invoice immediately if possible.
         let _ = myself.send_message(NetworkActorMessage::new_command(
-            NetworkActorCommand::SettleTlcSet(payment_hash, None),
+            NetworkActorCommand::SettleHoldTlcSet(payment_hash),
         ));
 
         Ok(())
@@ -4225,7 +4172,7 @@ where
             if !already_timeout {
                 myself
                     .send_message(NetworkActorMessage::new_command(
-                        NetworkActorCommand::SettleTlcSet(payment_hash, None),
+                        NetworkActorCommand::SettleHoldTlcSet(payment_hash),
                     ))
                     .expect(ASSUME_NETWORK_MYSELF_ALIVE);
             }
