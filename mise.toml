@@ -55,4 +55,4 @@ run = 'bru run "{{ usage.case }}" -r --env test'
 [tools]
 "cargo:wasm-pack" = "latest"
 "npm:@usebruno/cli" = "latest"
-"ubi:lightningnetwork/lnd" = { version = "latest", extract_all = "true" }
+"github:lightningnetwork/lnd" = { version = "latest", extract_all = "true" }
