@@ -1437,10 +1437,50 @@ where
                             );
                             let epoch_delay_milliseconds = tlc_expiry_delay(&delay_epoch);
                             let expect_expiry = now + epoch_delay_milliseconds;
-                            for tlc in actor_state
+
+                            // Collect TLCs that need to be checked for on-chain settlement
+                            let expired_tlcs: Vec<_> = actor_state
                                 .tlc_state
                                 .get_expired_offered_tlcs(expect_expiry)
-                            {
+                                .filter(|tlc| tlc.forwarding_tlc.is_some())
+                                .collect();
+
+                            // Query watchtower for TLC status if standalone watchtower is configured
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if !expired_tlcs.is_empty() {
+                                if let Some(ref watchtower_config) =
+                                    state.standalone_watchtower_config
+                                {
+                                    let tlc_queries: Vec<_> = expired_tlcs
+                                        .iter()
+                                        .map(|tlc| (channel_id, tlc.payment_hash))
+                                        .collect();
+
+                                    match watchtower_config.query_tlc_status(tlc_queries).await {
+                                        Ok(result) => {
+                                            // Sync preimages from watchtower to local store
+                                            for preimage_result in result.preimages {
+                                                debug!(
+                                                    "Syncing preimage from watchtower: payment_hash={:?}",
+                                                    preimage_result.payment_hash
+                                                );
+                                                self.store.insert_preimage(
+                                                    preimage_result.payment_hash,
+                                                    preimage_result.preimage,
+                                                );
+                                            }
+                                        }
+                                        Err(err) => {
+                                            warn!(
+                                                "Failed to query TLC status from watchtower for channel {:?}: {}",
+                                                channel_id, err
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+
+                            for tlc in expired_tlcs {
                                 if let Some((forwarding_channel_id, forwarding_tlc_id)) =
                                     tlc.forwarding_tlc
                                 {
@@ -2707,6 +2747,76 @@ pub struct NetworkActorState<S, C> {
 
     // Inflight payment actors
     inflight_payments: HashMap<Hash256, ActorRef<PaymentActorMessage>>,
+
+    // Standalone watchtower configuration for querying TLC status on-demand
+    #[cfg(not(target_arch = "wasm32"))]
+    standalone_watchtower_config: Option<StandaloneWatchtowerConfig>,
+}
+
+/// Configuration for standalone watchtower RPC
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+pub struct StandaloneWatchtowerConfig {
+    /// The RPC URL of the standalone watchtower
+    pub rpc_url: String,
+    /// The authentication token for the watchtower RPC
+    pub token: Option<String>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl StandaloneWatchtowerConfig {
+    /// Query TLC status from the standalone watchtower for a specific channel.
+    /// Returns the preimages discovered on-chain for the given TLCs.
+    pub async fn query_tlc_status(
+        &self,
+        tlcs: Vec<(Hash256, Hash256)>, // Vec<(channel_id, payment_hash)>
+    ) -> Result<crate::rpc::watchtower::GetTlcStatusResult, String> {
+        use crate::rpc::watchtower::{GetTlcStatusParams, TlcQuery, WatchtowerRpcClient};
+        use jsonrpsee::http_client::HttpClientBuilder;
+
+        if tlcs.is_empty() {
+            return Ok(crate::rpc::watchtower::GetTlcStatusResult {
+                settled_tlcs: vec![],
+                preimages: vec![],
+            });
+        }
+
+        // Build the RPC client using the same approach as main.rs
+        let mut client_builder = HttpClientBuilder::default();
+
+        // Add authorization header if token is provided
+        if let Some(token) = &self.token {
+            use hyper::{header::HeaderValue, HeaderMap};
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                "Authorization",
+                HeaderValue::from_str(&format!("Bearer {}", token))
+                    .map_err(|e| format!("Invalid token: {}", e))?,
+            );
+            client_builder = client_builder.set_headers(headers);
+        }
+
+        let client = client_builder
+            .build(&self.rpc_url)
+            .map_err(|e| format!("Failed to create watchtower client: {}", e))?;
+
+        // Build the query params
+        let params = GetTlcStatusParams {
+            tlcs: tlcs
+                .into_iter()
+                .map(|(channel_id, payment_hash)| TlcQuery {
+                    channel_id,
+                    payment_hash,
+                })
+                .collect(),
+        };
+
+        // Call the RPC
+        client
+            .get_tlc_status(params)
+            .await
+            .map_err(|e| format!("Failed to query TLC status: {}", e))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -4389,6 +4499,13 @@ where
                 funding_timeout_seconds: config.funding_timeout_seconds,
             },
             inflight_payments: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            standalone_watchtower_config: config.standalone_watchtower_rpc_url.as_ref().map(
+                |url| StandaloneWatchtowerConfig {
+                    rpc_url: url.clone(),
+                    token: config.standalone_watchtower_token.clone(),
+                },
+            ),
         };
 
         let node_announcement = state.get_or_create_new_node_announcement_message();

@@ -71,6 +71,17 @@ pub trait WatchtowerStore {
 
     /// Mark a tlc as settled on chain
     fn update_tlc_settled(&self, channel_id: &Hash256, payment_hash: [u8; 20]);
+
+    /// Check if a TLC is settled on chain using payment hash prefix (first 20 bytes)
+    fn is_tlc_settled_with_prefix(
+        &self,
+        channel_id: &Hash256,
+        payment_hash_prefix: &[u8; 20],
+    ) -> bool;
+
+    /// Get preimages for multiple payment hashes.
+    /// Returns a list of (payment_hash, preimage) pairs for the payment hashes that have preimages.
+    fn get_preimages(&self, payment_hashes: &[Hash256]) -> Vec<(Hash256, Hash256)>;
 }
 
 /// The data of a channel that the watchtower is monitoring

@@ -962,6 +962,30 @@ impl WatchtowerStore for Store {
         batch.put(key, []);
         batch.commit();
     }
+
+    fn is_tlc_settled_with_prefix(
+        &self,
+        channel_id: &Hash256,
+        payment_hash_prefix: &[u8; 20],
+    ) -> bool {
+        let key = [
+            &[WATCHTOWER_TLC_SETTLED_PREFIX],
+            channel_id.as_ref(),
+            payment_hash_prefix.as_ref(),
+        ]
+        .concat();
+        self.get(key).is_some()
+    }
+
+    fn get_preimages(&self, payment_hashes: &[Hash256]) -> Vec<(Hash256, Hash256)> {
+        payment_hashes
+            .iter()
+            .filter_map(|payment_hash| {
+                self.get_watch_preimage(payment_hash)
+                    .map(|preimage| (*payment_hash, preimage))
+            })
+            .collect()
+    }
 }
 
 impl GossipMessageStore for Store {

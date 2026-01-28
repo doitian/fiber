@@ -74,6 +74,15 @@ trait WatchtowerRpc {
         ctx: RpcContext,
         params: RemovePreimageParams,
     ) -> Result<(), ErrorObjectOwned>;
+
+    /// Get TLC status - check if TLCs are settled on-chain and get discovered preimages.
+    /// This is used by Fiber node to sync TLC settlement status from the watchtower.
+    #[method(name = "get_tlc_status")]
+    async fn get_tlc_status(
+        &self,
+        ctx: RpcContext,
+        params: GetTlcStatusParams,
+    ) -> Result<GetTlcStatusResult, ErrorObjectOwned>;
 }
 
 /// ignore rpc-doc-gen
@@ -122,6 +131,14 @@ trait WatchtowerRpc {
     /// Remove preimage
     #[method(name = "remove_preimage")]
     async fn remove_preimage(&self, params: RemovePreimageParams) -> Result<(), ErrorObjectOwned>;
+
+    /// Get TLC status - check if TLCs are settled on-chain and get discovered preimages.
+    /// This is used by Fiber node to sync TLC settlement status from the watchtower.
+    #[method(name = "get_tlc_status")]
+    async fn get_tlc_status(
+        &self,
+        params: GetTlcStatusParams,
+    ) -> Result<GetTlcStatusResult, ErrorObjectOwned>;
 }
 
 #[serde_as]
@@ -193,6 +210,44 @@ pub struct CreatePreimageParams {
 pub struct RemovePreimageParams {
     /// Payment hash
     pub payment_hash: Hash256,
+}
+
+/// Parameters for getting TLC settlement status from watchtower
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetTlcStatusParams {
+    /// List of TLCs to check, each containing channel_id and payment_hash
+    pub tlcs: Vec<TlcQuery>,
+}
+
+/// A single TLC query containing channel ID and payment hash
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TlcQuery {
+    /// Channel ID
+    pub channel_id: Hash256,
+    /// Payment hash
+    pub payment_hash: Hash256,
+}
+
+/// Result of TLC status query from watchtower
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetTlcStatusResult {
+    /// List of TLCs that are confirmed settled on-chain
+    pub settled_tlcs: Vec<TlcQuery>,
+    /// List of (payment_hash, preimage) pairs for discovered preimages
+    pub preimages: Vec<PreimageResult>,
+}
+
+/// A preimage result containing payment hash and preimage
+#[serde_as]
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PreimageResult {
+    /// Payment hash
+    pub payment_hash: Hash256,
+    /// Preimage
+    pub preimage: Hash256,
 }
 
 #[cfg(feature = "watchtower")]
@@ -311,5 +366,51 @@ where
         self.store
             .remove_watch_preimage(ctx.node_id, params.payment_hash);
         Ok(())
+    }
+
+    async fn get_tlc_status(
+        &self,
+        _ctx: RpcContext,
+        params: GetTlcStatusParams,
+    ) -> Result<GetTlcStatusResult, ErrorObjectOwned> {
+        let mut settled_tlcs = Vec::new();
+        let mut payment_hashes = Vec::new();
+
+        for tlc in &params.tlcs {
+            // Extract the first 20 bytes of the payment hash for settled check
+            let payment_hash_prefix: [u8; 20] = tlc.payment_hash.as_ref()[0..20]
+                .try_into()
+                .expect("payment hash should be at least 20 bytes");
+
+            // Check if TLC is settled on-chain
+            if self
+                .store
+                .is_tlc_settled_with_prefix(&tlc.channel_id, &payment_hash_prefix)
+            {
+                settled_tlcs.push(TlcQuery {
+                    channel_id: tlc.channel_id,
+                    payment_hash: tlc.payment_hash,
+                });
+            }
+
+            // Collect payment hashes for preimage lookup
+            payment_hashes.push(tlc.payment_hash);
+        }
+
+        // Get preimages for the payment hashes
+        let preimages = self
+            .store
+            .get_preimages(&payment_hashes)
+            .into_iter()
+            .map(|(payment_hash, preimage)| PreimageResult {
+                payment_hash,
+                preimage,
+            })
+            .collect();
+
+        Ok(GetTlcStatusResult {
+            settled_tlcs,
+            preimages,
+        })
     }
 }

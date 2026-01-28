@@ -61,6 +61,7 @@ You may refer to the e2e test cases in the `tests/bruno/e2e` directory for examp
         * [Method `update_local_settlement`](#watchtower-update_local_settlement)
         * [Method `create_preimage`](#watchtower-create_preimage)
         * [Method `remove_preimage`](#watchtower-remove_preimage)
+        * [Method `get_tlc_status`](#watchtower-get_tlc_status)
 * [RPC Types](#rpc-types)
 
     * [Type `Attribute`](#type-attribute)
@@ -84,6 +85,7 @@ You may refer to the e2e test cases in the `tests/bruno/e2e` directory for examp
     * [Type `PaymentCustomRecords`](#type-paymentcustomrecords)
     * [Type `PaymentStatus`](#type-paymentstatus)
     * [Type `PeerInfo`](#type-peerinfo)
+    * [Type `PreimageResult`](#type-preimageresult)
     * [Type `Privkey`](#type-privkey)
     * [Type `Pubkey`](#type-pubkey)
     * [Type `RemoveTlcReason`](#type-removetlcreason)
@@ -94,6 +96,7 @@ You may refer to the e2e test cases in the `tests/bruno/e2e` directory for examp
     * [Type `SettlementData`](#type-settlementdata)
     * [Type `SettlementTlc`](#type-settlementtlc)
     * [Type `TLCId`](#type-tlcid)
+    * [Type `TlcQuery`](#type-tlcquery)
     * [Type `TlcStatus`](#type-tlcstatus)
     * [Type `UdtArgInfo`](#type-udtarginfo)
     * [Type `UdtCellDep`](#type-udtcelldep)
@@ -1039,6 +1042,25 @@ Remove preimage
 
 
 
+<a id="watchtower-get_tlc_status"></a>
+#### Method `get_tlc_status`
+
+Get TLC status - check if TLCs are settled on-chain and get discovered preimages.
+ This is used by Fiber node to sync TLC settlement status from the watchtower.
+
+##### Params
+
+* `tlcs` - <em>Vec<[TlcQuery](#type-tlcquery)></em>, List of TLCs to check, each containing channel_id and payment_hash
+
+##### Returns
+
+* `settled_tlcs` - <em>Vec<[TlcQuery](#type-tlcquery)></em>, List of TLCs that are confirmed settled on-chain
+* `preimages` - <em>Vec<[PreimageResult](#type-preimageresult)></em>, List of (payment_hash, preimage) pairs for discovered preimages
+
+---
+
+
+
 
 ## RPC Types
 
@@ -1392,6 +1414,18 @@ The information about a peer connected to the node.
  The `graph_nodes` in Graph rpc module will return all addresses of the peer.
 ---
 
+<a id="#type-preimageresult"></a>
+### Type `PreimageResult`
+
+A preimage result containing payment hash and preimage
+
+
+#### Fields
+
+* `payment_hash` - <em>[Hash256](#type-hash256)</em>, Payment hash
+* `preimage` - <em>[Hash256](#type-hash256)</em>, Preimage
+---
+
 <a id="#type-privkey"></a>
 ### Type `Privkey`
 
@@ -1524,6 +1558,18 @@ The id of a tlc, it can be either offered or received.
 
 * `Offered` - <em>`u64`</em>, Offered tlc id
 * `Received` - <em>`u64`</em>, Received tlc id
+---
+
+<a id="#type-tlcquery"></a>
+### Type `TlcQuery`
+
+A single TLC query containing channel ID and payment hash
+
+
+#### Fields
+
+* `channel_id` - <em>[Hash256](#type-hash256)</em>, Channel ID
+* `payment_hash` - <em>[Hash256](#type-hash256)</em>, Payment hash
 ---
 
 <a id="#type-tlcstatus"></a>
