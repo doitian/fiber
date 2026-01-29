@@ -1532,6 +1532,8 @@ where
         {
             self.store_preimage(payment_hash, payment_preimage);
         }
+        self.store
+            .remove_payment_hold_tlc(&payment_hash, &state.id, command.id);
         let msg = FiberMessageWithPeerId::new(
             state.get_remote_peer_id(),
             FiberMessage::remove_tlc(RemoveTlc {
