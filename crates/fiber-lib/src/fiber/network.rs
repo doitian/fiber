@@ -1975,8 +1975,11 @@ where
             "Remove timeout hold tlc payment hash {:?} channel_id {:?} tlc id {:?}",
             payment_hash, channel_id, tlc_id
         );
-        if self.store.get_invoice_status(&payment_hash) == Some(CkbInvoiceStatus::Received) {
-            // When invoice is marked as received, we have determined to settle its TLCs.
+        if self.store.get_invoice_status(&payment_hash) == Some(CkbInvoiceStatus::Received)
+            && self.store.get_preimage(&payment_hash).is_some()
+        {
+            // When invoice is marked as received and preimage is available,
+            // we have determined to settle its TLCs.
             // Instead of timeout the TLC, try to settle it again.
             self.settle_hold_tlc_set(state, payment_hash).await;
             return;
