@@ -2,9 +2,6 @@
 _.path = ["~/apps/bitcoin-27.0/bin", "~/apps/lina"]
 CXXFLAGS = "--include cstdint"
 
-[vars]
-cargo_test_args = ""
-
 [tasks.test]
 usage = 'arg "[filters]" var=#true'
 run = "cargo nextest run --no-fail-fast{% for f in usage.filters | default(value=[]) %} {{ f }}{% endfor %}"
@@ -28,7 +25,7 @@ run = [
   "killall fnn || true",
   "killall ckb || true",
   "killall bitcoind || true",
-  "killall lnd || true"
+  "killall lnd || true",
 ]
 
 [tasks."e2e:setup"]
@@ -51,6 +48,9 @@ arg "<case>" help="test case name"
 complete "case" run="cd tests/bruno && fd -t d --min-depth=2 --path-separator=/ --format={}"
 '''
 run = 'bru run "{{ usage.case }}" -r --env test'
+
+[tasks.default]
+run = "make"
 
 [tools]
 "cargo:wasm-pack" = "latest"
