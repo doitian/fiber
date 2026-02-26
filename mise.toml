@@ -1,6 +1,5 @@
 [env]
 _.path = ["~/apps/bitcoin-27.0/bin", "~/apps/lina"]
-CXXFLAGS = "--include cstdint"
 
 [tasks.test]
 usage = 'arg "[filters]" var=#true'
