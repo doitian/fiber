@@ -1350,27 +1350,19 @@ where
                                     }
                                 }
 
-                                let payment_preimage = if let Some(preimage) =
-                                    self.store.get_preimage(&tlc.payment_hash)
-                                {
-                                    Some(preimage)
-                                } else if let Some(querier) = self.watchtower_querier.as_ref() {
-                                    if let Some(status) = querier
-                                        .query_tlc_status(&channel_id, &tlc.payment_hash)
-                                        .await
-                                    {
-                                        if let Some(preimage) = status.preimage {
+                                let mut payment_preimage =
+                                    self.store.get_preimage(&tlc.payment_hash);
+                                if payment_preimage.is_none() {
+                                    if let Some(querier) = self.watchtower_querier.as_ref() {
+                                        payment_preimage = querier
+                                            .query_tlc_status(&channel_id, &tlc.payment_hash)
+                                            .await
+                                            .and_then(|s| s.preimage);
+                                        if let Some(preimage) = payment_preimage {
                                             self.store.insert_preimage(tlc.payment_hash, preimage);
-                                            Some(preimage)
-                                        } else {
-                                            None
                                         }
-                                    } else {
-                                        None
                                     }
-                                } else {
-                                    None
-                                };
+                                }
                                 let Some(payment_preimage) = payment_preimage else {
                                     continue;
                                 };
