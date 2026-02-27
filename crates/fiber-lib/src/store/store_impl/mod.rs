@@ -1115,7 +1115,9 @@ impl crate::fiber::WatchtowerQuerier for Store {
         payment_hash: &Hash256,
     ) -> Option<crate::fiber::TlcWatchtowerStatus> {
         Some(WatchtowerStore::query_tlc_status(
-            self, channel_id, payment_hash,
+            self,
+            channel_id,
+            payment_hash,
         ))
     }
 }

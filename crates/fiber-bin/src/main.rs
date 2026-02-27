@@ -179,22 +179,20 @@ pub async fn main() -> Result<(), ExitMessage> {
                         let mut headers = HeaderMap::new();
                         headers.insert(
                             "Authorization",
-                            HeaderValue::from_str(&format!("Bearer {}", token)).map_err(
-                                |err| {
-                                    ExitMessage(format!(
-                                        "failed to create watchtower rpc client: {err:?}"
-                                    ))
-                                },
-                            )?,
+                            HeaderValue::from_str(&format!("Bearer {}", token)).map_err(|err| {
+                                ExitMessage(format!(
+                                    "failed to create watchtower rpc client: {err:?}"
+                                ))
+                            })?,
                         );
                         client_builder = client_builder.set_headers(headers);
                     }
                     let querier_client = client_builder.build(url).map_err(|err| {
                         ExitMessage(format!("failed to create watchtower rpc client: {}", err))
                     })?;
-                    Some(Arc::new(
-                        fnn::rpc::watchtower::WatchtowerRpcQuerier::new(querier_client),
-                    ))
+                    Some(Arc::new(fnn::rpc::watchtower::WatchtowerRpcQuerier::new(
+                        querier_client,
+                    )))
                 } else {
                     None
                 };

@@ -1350,23 +1350,27 @@ where
                                     }
                                 }
 
-                                let payment_preimage =
-                                    if let Some(preimage) = self.store.get_preimage(&tlc.payment_hash) {
-                                        Some(preimage)
-                                    } else if let Some(querier) = self.watchtower_querier.as_ref() {
-                                        if let Some(status) = querier.query_tlc_status(&channel_id, &tlc.payment_hash).await {
-                                            if let Some(preimage) = status.preimage {
-                                                self.store.insert_preimage(tlc.payment_hash, preimage);
-                                                Some(preimage)
-                                            } else {
-                                                None
-                                            }
+                                let payment_preimage = if let Some(preimage) =
+                                    self.store.get_preimage(&tlc.payment_hash)
+                                {
+                                    Some(preimage)
+                                } else if let Some(querier) = self.watchtower_querier.as_ref() {
+                                    if let Some(status) = querier
+                                        .query_tlc_status(&channel_id, &tlc.payment_hash)
+                                        .await
+                                    {
+                                        if let Some(preimage) = status.preimage {
+                                            self.store.insert_preimage(tlc.payment_hash, preimage);
+                                            Some(preimage)
                                         } else {
                                             None
                                         }
                                     } else {
                                         None
-                                    };
+                                    }
+                                } else {
+                                    None
+                                };
                                 let Some(payment_preimage) = payment_preimage else {
                                     continue;
                                 };
@@ -1525,14 +1529,15 @@ where
                                 if let Some((forwarding_channel_id, forwarding_tlc_id)) =
                                     tlc.forwarding_tlc
                                 {
-                                    let is_settled = if let Some(querier) = self.watchtower_querier.as_ref() {
-                                        querier
-                                            .query_tlc_status(&channel_id, &tlc.payment_hash)
-                                            .await
-                                            .is_some_and(|s| s.is_settled)
-                                    } else {
-                                        false
-                                    };
+                                    let is_settled =
+                                        if let Some(querier) = self.watchtower_querier.as_ref() {
+                                            querier
+                                                .query_tlc_status(&channel_id, &tlc.payment_hash)
+                                                .await
+                                                .is_some_and(|s| s.is_settled)
+                                        } else {
+                                            false
+                                        };
                                     if is_settled {
                                         let (send, _recv) = oneshot::channel();
                                         let rpc_reply = RpcReplyPort::from(send);
