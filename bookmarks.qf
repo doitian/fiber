@@ -1,2 +1,0 @@
-/home/ian/codebase/fiber/crates/fiber-lib/src/fiber/network.rs|1767 col 1|             NetworkActorCommand::SettleTlcSet(payment_hash, tlc_info) => {
-/home/ian/codebase/fiber/./crates/fiber-lib/src/fiber/channel.rs|882 col 31|     fn try_to_settle_down_tlc_with_invoice(
