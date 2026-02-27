@@ -1,0 +1,2 @@
+[files]
+excludeDirs = ["crates/fiber-lib/benches"]
