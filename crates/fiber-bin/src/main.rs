@@ -12,7 +12,8 @@ use fnn::fiber::{graph::NetworkGraph, network::init_chain_hash, network::Network
 use fnn::rpc::server::start_rpc;
 use fnn::rpc::watchtower::{
     CreatePreimageParams, CreateWatchChannelParams, RemovePreimageParams, RemoveWatchChannelParams,
-    UpdateLocalSettlementParams, UpdateRevocationParams, WatchtowerRpcClient,
+    UpdateLocalSettlementParams, UpdatePendingRemoteSettlementParams, UpdateRevocationParams,
+    WatchtowerRpcClient,
 };
 use fnn::store::Store;
 use fnn::tasks::{
@@ -167,6 +168,37 @@ pub async fn main() -> Result<(), ExitMessage> {
 
             info!("Starting fiber");
 
+            // Construct watchtower querier before starting network.
+            // Prefer local store (built-in watchtower) over standalone RPC for efficiency.
+            let watchtower_querier: Option<Arc<dyn fnn::fiber::WatchtowerQuerier>> =
+                if !fiber_config.disable_built_in_watchtower.unwrap_or_default() {
+                    Some(Arc::new(store.clone()))
+                } else if let Some(url) = fiber_config.standalone_watchtower_rpc_url.clone() {
+                    let mut client_builder = HttpClientBuilder::default();
+                    if let Some(token) = fiber_config.standalone_watchtower_token.as_ref() {
+                        let mut headers = HeaderMap::new();
+                        headers.insert(
+                            "Authorization",
+                            HeaderValue::from_str(&format!("Bearer {}", token)).map_err(
+                                |err| {
+                                    ExitMessage(format!(
+                                        "failed to create watchtower rpc client: {err:?}"
+                                    ))
+                                },
+                            )?,
+                        );
+                        client_builder = client_builder.set_headers(headers);
+                    }
+                    let querier_client = client_builder.build(url).map_err(|err| {
+                        ExitMessage(format!("failed to create watchtower rpc client: {}", err))
+                    })?;
+                    Some(Arc::new(
+                        fnn::rpc::watchtower::WatchtowerRpcQuerier::new(querier_client),
+                    ))
+                } else {
+                    None
+                };
+
             let chain_client = CkbRpcClient::new(&ckb_config);
             let network_actor: ActorRef<NetworkActorMessage> = start_network(
                 fiber_config.clone(),
@@ -178,6 +210,7 @@ pub async fn main() -> Result<(), ExitMessage> {
                 store.clone(),
                 network_graph.clone(),
                 default_shutdown_script,
+                watchtower_querier,
             )
             .await;
 
@@ -553,6 +586,15 @@ async fn forward_event_to_client<T: WatchtowerRpcClient + Sync>(
         ) => {
             watchtower_client
                 .update_local_settlement(UpdateLocalSettlementParams {
+                    channel_id,
+                    settlement_data,
+                })
+                .await
+                .expect(ASSUME_WATCHTOWER_CLIENT_CALL_OK);
+        }
+        NetworkServiceEvent::LocalCommitmentSigned(channel_id, settlement_data) => {
+            watchtower_client
+                .update_pending_remote_settlement(UpdatePendingRemoteSettlementParams {
                     channel_id,
                     settlement_data,
                 })
