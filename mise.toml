@@ -51,6 +51,9 @@ run = 'bru run "{{ usage.case }}" -r --env test'
 [tasks.default]
 run = "make"
 
+[tasks.check]
+run = "make check"
+
 [tools]
 "cargo:wasm-pack" = "latest"
 "npm:@usebruno/cli" = "latest"
