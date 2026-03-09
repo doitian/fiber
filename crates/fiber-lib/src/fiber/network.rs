@@ -1411,7 +1411,7 @@ where
                                             WatchtowerQueryActorMessage::QueryPreimage {
                                                 channel_id,
                                                 tlc_id: tlc_id.into(),
-                                                payment_hash: payment_hash,
+                                                payment_hash,
                                             },
                                         );
                                     }
@@ -1584,10 +1584,10 @@ where
                                     let _ = wt_actor.send_message(
                                         WatchtowerQueryActorMessage::QuerySettled {
                                             channel_id,
-                                            payment_hash: payment_hash,
+                                            payment_hash,
                                             forwarding_channel_id,
                                             forwarding_tlc_id,
-                                            shared_secret: shared_secret,
+                                            shared_secret,
                                         },
                                     );
                                 }
