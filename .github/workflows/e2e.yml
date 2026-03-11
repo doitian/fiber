@@ -20,6 +20,7 @@ jobs:
           - udt
           - reestablish
           - cross-chain-hub
+          - cross-chain-hub-separate
           - router-pay
           - udt-router-pay
           - watchtower/force-close
