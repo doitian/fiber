@@ -503,17 +503,17 @@ impl<S: CchOrderStore> CchState<S> {
     /// 1. The `wrapped_btc_type_script` config option (used directly if set), or
     /// 2. The contracts context via `get_script_by_contract` (only in in-process mode).
     ///
-    /// In standalone mode (when `fiber_rpc_url` is set), the contracts context is not
+    /// In separate service mode (when `fiber_rpc_url` is set), the contracts context is not
     /// initialized, so `wrapped_btc_type_script` must be configured explicitly.
     fn resolve_wrapped_btc_type_script(&self) -> Result<ckb_jsonrpc_types::Script, CchError> {
         if let Some(ref script) = self.config.wrapped_btc_type_script {
             return Ok(script.clone());
         }
 
-        // In standalone mode, contracts context is not available
+        // In separate service mode, contracts context is not available
         if self.config.fiber_rpc_url.is_some() {
             return Err(CchError::ConfigError(
-                "wrapped_btc_type_script must be configured in standalone mode (when fiber_rpc_url is set)".to_string(),
+                "wrapped_btc_type_script must be configured in separate service mode (when fiber_rpc_url is set)".to_string(),
             ));
         }
 

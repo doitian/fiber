@@ -117,7 +117,7 @@ pub struct CchConfig {
 
     /// Full wrapped BTC type script. When set, this script is used directly instead of
     /// constructing it from the contracts context via `get_script_by_contract`.
-    /// This is required in standalone mode (when `fiber_rpc_url` is set) because the
+    /// This is required in separate service mode (when `fiber_rpc_url` is set) because the
     /// contracts context is not initialized without the Fiber/CKB services.
     #[default(None)]
     #[arg(skip)]
