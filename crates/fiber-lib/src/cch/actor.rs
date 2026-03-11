@@ -499,6 +499,36 @@ impl<S: CchOrderStore> CchState<S> {
         }
     }
 
+    /// Resolves the wrapped BTC type script from either:
+    /// 1. The `wrapped_btc_type_script` config option (used directly if set), or
+    /// 2. The contracts context via `get_script_by_contract` (only in in-process mode).
+    ///
+    /// In standalone mode (when `fiber_rpc_url` is set), the contracts context is not
+    /// initialized, so `wrapped_btc_type_script` must be configured explicitly.
+    fn resolve_wrapped_btc_type_script(&self) -> Result<ckb_jsonrpc_types::Script, CchError> {
+        if let Some(ref script) = self.config.wrapped_btc_type_script {
+            return Ok(script.clone());
+        }
+
+        // In standalone mode, contracts context is not available
+        if self.config.fiber_rpc_url.is_some() {
+            return Err(CchError::ConfigError(
+                "wrapped_btc_type_script must be configured in standalone mode (when fiber_rpc_url is set)".to_string(),
+            ));
+        }
+
+        // In-process mode: construct from contracts context
+        let args = hex::decode(
+            self.config
+                .wrapped_btc_type_script_args
+                .trim_start_matches("0x"),
+        )
+        .map_err(|_| {
+            CchError::HexDecodingError(self.config.wrapped_btc_type_script_args.clone())
+        })?;
+        Ok(get_script_by_contract(Contract::SimpleUDT, &args).into())
+    }
+
     async fn send_btc(&self, send_btc: SendBTC) -> Result<CchOrder, CchError> {
         let duration_since_epoch = SystemTime::now().duration_since(UNIX_EPOCH)?;
 
@@ -553,19 +583,7 @@ impl<S: CchOrderStore> CchState<S> {
             / 1_000_000_000u128
             + (self.config.base_fee_sats as u128);
 
-        let wrapped_btc_type_script: ckb_jsonrpc_types::Script = get_script_by_contract(
-            Contract::SimpleUDT,
-            hex::decode(
-                self.config
-                    .wrapped_btc_type_script_args
-                    .trim_start_matches("0x"),
-            )
-            .map_err(|_| {
-                CchError::HexDecodingError(self.config.wrapped_btc_type_script_args.clone())
-            })?
-            .as_ref(),
-        )
-        .into();
+        let wrapped_btc_type_script = self.resolve_wrapped_btc_type_script()?;
         let invoice_amount_sats = amount_msat
             .div_ceil(1_000u128)
             .checked_add(fee_sats)
@@ -679,19 +697,7 @@ impl<S: CchOrderStore> CchState<S> {
         }
 
         // Verify wrapped_btc_type_script matches invoice UDT type script
-        let wrapped_btc_type_script: ckb_jsonrpc_types::Script = get_script_by_contract(
-            Contract::SimpleUDT,
-            hex::decode(
-                self.config
-                    .wrapped_btc_type_script_args
-                    .trim_start_matches("0x"),
-            )
-            .map_err(|_| {
-                CchError::HexDecodingError(self.config.wrapped_btc_type_script_args.clone())
-            })?
-            .as_ref(),
-        )
-        .into();
+        let wrapped_btc_type_script = self.resolve_wrapped_btc_type_script()?;
 
         // Verify invoice UDT type script matches configured wrapped_btc_type_script
         if let Some(invoice_udt_script) = invoice.udt_type_script() {

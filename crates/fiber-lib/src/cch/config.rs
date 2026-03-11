@@ -115,6 +115,14 @@ pub struct CchConfig {
     )]
     pub min_outgoing_invoice_expiry_delta_seconds: u64,
 
+    /// Full wrapped BTC type script. When set, this script is used directly instead of
+    /// constructing it from the contracts context via `get_script_by_contract`.
+    /// This is required in standalone mode (when `fiber_rpc_url` is set) because the
+    /// contracts context is not initialized without the Fiber/CKB services.
+    #[default(None)]
+    #[arg(skip)]
+    pub wrapped_btc_type_script: Option<ckb_jsonrpc_types::Script>,
+
     /// Ignore the failure when starting the cch service.
     #[default(false)]
     #[arg(skip)]
