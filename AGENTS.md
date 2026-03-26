@@ -250,3 +250,23 @@ CI runs the following checks (all must pass):
 - RPC API documentation: `crates/fiber-lib/src/rpc/README.md` (auto-generated)
 - Protocol specifications: `docs/specs/`
 - Development notes: `docs/notes/`
+
+## Cursor Cloud specific instructions
+
+### System dependency
+The VM's default `c++` is Clang 18 which selects the GCC 14 C++ stdlib, but only GCC 13 headers ship pre-installed. RocksDB (via `ckb-librocksdb-sys`) will fail to compile without `libstdc++-14-dev`. The update script installs it automatically.
+
+### Running the FNN binary locally
+FNN requires a CKB node RPC endpoint. The testnet config at `config/testnet/config.yml` points to `https://testnet.ckbapp.dev/` which works without a local CKB node. To run locally:
+```
+mkdir -p /tmp/fnn-test/ckb
+cp config/testnet/config.yml /tmp/fnn-test/
+python3 -c "import secrets; print(secrets.token_hex(32))" > /tmp/fnn-test/ckb/key
+FIBER_SECRET_KEY_PASSWORD='testpw' RUST_LOG=info ./target/debug/fnn -c /tmp/fnn-test/config.yml -d /tmp/fnn-test
+```
+
+### Testing notes
+- Use `cargo nextest run` (not `cargo test`). See AGENTS.md commands above.
+- `test_trampoline_routing_race_same_invoice` is a known flaky test; occasional failures are expected.
+- The full test suite (`-p fnn -p fiber-bin`) takes ~6-7 minutes. Individual tests are fast.
+- Build commands (especially first `cargo build`) take several minutes due to RocksDB C++ compilation.
