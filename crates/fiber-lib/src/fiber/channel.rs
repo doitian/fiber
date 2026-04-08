@@ -1669,9 +1669,22 @@ where
 
         if matches!(remove_reason, RemoveTlcReason::RemoveTlcFulfill(_)) {
             if self.store.get_invoice(&tlc_info.payment_hash).is_some() {
-                self.store
-                    .update_invoice_status(&tlc_info.payment_hash, CkbInvoiceStatus::Paid)
-                    .expect("update invoice status failed");
+                // Only mark the invoice as Paid once all TLCs for this payment have been
+                // fulfilled. For MPP payments, multiple TLCs from different channels
+                // contribute to a single payment; the hold-TLC list is drained one entry
+                // at a time in handle_remove_tlc_command (before this function is called),
+                // so an empty list means every part has been settled.
+                // For single-path payments the TLC is never added to the hold list, so
+                // the list is already empty and the invoice is marked Paid immediately.
+                if self
+                    .store
+                    .get_payment_hold_tlcs(tlc_info.payment_hash)
+                    .is_empty()
+                {
+                    self.store
+                        .update_invoice_status(&tlc_info.payment_hash, CkbInvoiceStatus::Paid)
+                        .expect("update invoice status failed");
+                }
             }
             // when a hop is a forwarding hop, we need to keep preimage after relay RemoveTlc finished
             // incase watchtower may need preimage to settledown
