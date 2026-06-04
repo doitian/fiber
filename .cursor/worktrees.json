@@ -3,6 +3,7 @@
     "cp $ROOT_WORKTREE_PATH/mise.toml mise.toml",
     "mise trust -y",
     "mkdir -p .vscode && cp -f $ROOT_WORKTREE_PATH/.vscode/settings.json .vscode/settings.json",
-    "cp -r $ROOT_WORKTREE_PATH/.claude .claude"
+    "cp -r $ROOT_WORKTREE_PATH/.claude .claude",
+    "cargo ramdisk mount || true"
   ]
 }
